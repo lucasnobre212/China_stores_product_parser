@@ -17,6 +17,7 @@ creds = ServiceAccountCredentials.from_json_keyfile_name(
 client = gspread.authorize(creds)
 # Initializing sheet
 sheet = client.open("Cópia de LMP").sheet1
+# Get name column form sheet1
 name_col_original = sheet.col_values(1)
 # Removes blank strings
 name_col = list(set(filter(None, name_col_original)))
@@ -90,11 +91,8 @@ def update_cell(name, value, store, date):
 
 def main():
     global name_col_lenght
-    price_tag = []
     for name in get_product_name():
         price = get_product(get_product_search_page(name))
-        print("Appending price")
-        price_tag.append(price)
         print("Updating cells")
         update_cell(name, price, 'gearbest', date)
         name_col_lenght = name_col_lenght + 1
