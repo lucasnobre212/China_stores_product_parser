@@ -21,48 +21,65 @@ sheet = client.open("Cópia de LMP").sheet1
 name_col_original = sheet.col_values(1)
 # Removes blank strings
 name_col = list(set(filter(None, name_col_original)))
+name_col.remove('Nome')
 name_col_lenght = len(list(filter(None, name_col_original)))
 # System date
 # dd/mm/yyyy format
 date = (time.strftime("%d/%m/%Y"))
 
-
-def get_product_name():
-    print("Running get_product_name")
-    name_col.remove("Nome")
-    return name_col
+# Creates a list of sites
+site = ['gearbest', 'banggood']
 
 
 # Returns the beautifulsoup object of the product search page
-def get_product_search_page(name):
+def get_product_search_page(store, name):
     print('Running get_product_search_page')
     # Split the string, making it a list of words
     name_split = name.split()
 
-    base_url = 'https://www.gearbest.com/'
-    # Creates a forLoop to add - the more words we have
-    search_url = ''
-    for i in range(0, len(name_split)):
-        search_url = search_url + name_split[i] + '-'
-    # Finishes the full url
-    final_search = base_url + search_url + '_gear'
-    # Downloads the search html
-    res = requests.get(final_search)
+    if store == 'gearbest':
+        base_url = 'https://www.gearbest.com/'
+        # Creates a forLoop to add - the more words we have
+        search_url = ''
+        for i in range(0, len(name_split)):
+            search_url = search_url + name_split[i] + '-'
+        # Finishes the full url
+        final_search = base_url + search_url + '_gear'
+        # Downloads the search html
+        res = requests.get(final_search)
+    elif store == 'banggood':
+        base_url = 'https://www.banggood.com/search/'
+        # Creates a forLoop to add - the more words we have
+        search_url = ''
+        for i in range(0, len(name_split)):
+            search_url = search_url + name_split[i] + '-'
+        # Finishes the full url
+        final_search = base_url + search_url + '.html'
+        # Downloads the search html
+        res = requests.get(final_search)
     # Creates a beautifulsoup object of the page
     product_search_page = bs4.BeautifulSoup(res.text, "html.parser")
     return product_search_page
 
 
-def get_product(product_search_page):
+def get_product(store, product_search_page):
     print("Running get_product")
-    # Select the rank 1(most relevant) product
-    product_tag = product_search_page.select('div.pro_inner.logsss_event_ps')
-    for i in range(0, len(product_tag)):
-        if re.search("('rank':1,)", str(product_tag[i])):
-            rank_1_tag = product_tag[i]
-    # Get the rank 1 product page
-    rank_1_product = rank_1_tag.select('span.my_shop_price')[0]
-    product_price = rank_1_product.get('orgp')
+    if store == 'gearbest':
+        # Select the rank 1(most relevant) product
+        product_tag = product_search_page.select(
+                    'div.pro_inner.logsss_event_ps')
+        for i in range(0, len(product_tag)):
+            if re.search("('rank':1,)", str(product_tag[i])):
+                rank_1_tag = product_tag[i]
+        # Get the rank 1 product page
+        rank_1_product = rank_1_tag.select('span.my_shop_price')[0]
+        product_price = rank_1_product.get('orgp')
+    elif store == 'banggood':
+        # Select the rank 1(most relevant) product
+        product_tag = product_search_page.select('ul.goodlist_1 li')[0]
+        # Get the rank 1 product page
+        rank_1_product = product_tag.select('span.price.wh_cn')[0]
+        product_price = rank_1_product.get('oriprice')
     return product_price
 
 
@@ -71,13 +88,13 @@ def get_product(product_search_page):
 # #     # Download the html
 # #     res = requests.get(page)
 # #     # Creates a BeautifulSoup class
-# #     site = bs4.BeautifulSoup(res.text, "html.parser")
+# #     site_page = bs4.BeautifulSoup(res.text, "html.parser")
 # #     # Select a html tag and attribute. Using [0] is important
 # #     # for choosing the tag
 # #     try:
-# #         price_tag = site.select('b#unit_price')[0]
+# #         price_tag = site_page.select('b#unit_price')[0]
 # #     except:
-# #         price_tag = site.select('span#unit_price')[0]
+# #         price_tag = site_page.select('span#unit_price')[0]
 # #     # data-orgp is the price value($)
 # #     price = price_tag.get('data-orgp')
 # #     return price
@@ -91,11 +108,13 @@ def update_cell(name, value, store, date):
 
 def main():
     global name_col_lenght
-    for name in get_product_name():
-        price = get_product(get_product_search_page(name))
-        print("Updating cells")
-        update_cell(name, price, 'gearbest', date)
-        name_col_lenght = name_col_lenght + 1
+    for store in site:
+        print("searching for store:" + store)
+        for name in name_col:
+            price = get_product(store, get_product_search_page(store, name))
+            print("Updating cells")
+            update_cell(name, price, store, date)
+            name_col_lenght = name_col_lenght + 1
 
 if __name__ == "__main__":
     main()
