@@ -16,19 +16,28 @@ creds = ServiceAccountCredentials.from_json_keyfile_name(
                                 'client_secret.json', scope)
 client = gspread.authorize(creds)
 # Initializing sheet
-sheet = client.open("Cópia de LMP").sheet1
-# Get name column form sheet1
-name_col_original = sheet.col_values(1)
+sh = client.open("Cópia de LMP")
+sheet = sh.worksheet('DB')
+name_sheet = sh.worksheet('Produtos')
+# Get name column from Produtos worksheet
+name_col_original = name_sheet.col_values(1)
 # Removes blank strings
 name_col = list(set(filter(None, name_col_original)))
 name_col.remove('Nome')
-name_col_lenght = len(list(filter(None, name_col_original)))
+# Get nem column from DB worksheet
+db_name_col_original = sheet.col_values(1)
+
 # System date
 # dd/mm/yyyy format
 date = (time.strftime("%d/%m/%Y"))
 
 # Creates a list of sites
 site = ['gearbest', 'banggood']
+
+
+def get_col_lenght(col):
+    col_lenght = len(list(filter(None, col)))
+    return col_lenght
 
 
 # Returns the beautifulsoup object of the product search page
@@ -100,21 +109,22 @@ def get_product(store, product_search_page):
 # #     return price
 
 def update_cell(name, value, store, date):
-    sheet.update_cell(name_col_lenght + 1, 1, name)
-    sheet.update_cell(name_col_lenght + 1, 2, value)
-    sheet.update_cell(name_col_lenght + 1, 9, store)
-    sheet.update_cell(name_col_lenght + 1, 10, date)
+    db_name_col_lenght = get_col_lenght(db_name_col_original)
+    sheet.update_cell(db_name_col_lenght + 1, 1, name)
+    sheet.update_cell(db_name_col_lenght + 1, 2, value)
+    sheet.update_cell(db_name_col_lenght + 1, 9, store)
+    sheet.update_cell(db_name_col_lenght + 1, 10, date)
 
 
 def main():
-    global name_col_lenght
+    db_name_col_lenght = get_col_lenght(db_name_col_original)
     for store in site:
         print("searching for store:" + store)
         for name in name_col:
             price = get_product(store, get_product_search_page(store, name))
             print("Updating cells")
             update_cell(name, price, store, date)
-            name_col_lenght = name_col_lenght + 1
+            db_name_col_lenght = db_name_col_lenght + 1
 
 if __name__ == "__main__":
     main()
