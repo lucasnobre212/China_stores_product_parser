@@ -53,19 +53,14 @@ def get_product_search_page(store, name):
 def get_product_price(store, product_search_page):
     if store == 'gearbest':
         # Select the rank 1(most relevant) product
-        product_tag = product_search_page.select(
-                    'div.pro_inner.logsss_event_ps')
-        for i in range(0, len(product_tag)):
-            if re.search("('rank':1,)", str(product_tag[i])):
-                rank_1_tag = product_tag[i]
-        # Get the rank 1 product page
-        rank_1_product = rank_1_tag.select('span.my_shop_price')[0]
+        rank_1_product = product_search_page.select(
+                    'div.pro_inner.logsss_event_ps span.my_shop_price')[0]
         product_price = rank_1_product.get('orgp')
     elif store == 'banggood':
         # Select the rank 1(most relevant) product
-        product_tag = product_search_page.select('ul.goodlist_1 li')[0]
+        rank_1_product = product_search_page.select(
+            'ul.goodlist_1 li span.price.wh_cn')[0]
         # Get the rank 1 product page
-        rank_1_product = product_tag.select('span.price.wh_cn')[0]
         product_price = rank_1_product.get('oriprice')
     return product_price
 
@@ -89,7 +84,7 @@ def get_product_price(store, product_search_page):
 def batch_update_cells(sheet, col_lenght, first_col, list, last_col):
     logging.debug('Updating cell values')
     cell_list = sheet.range(
-        col_lenght + 1, first_col, col_lenght + len(list), last_col)
+        col_lenght + 2, first_col, col_lenght + len(list), last_col)
     for i, val in enumerate(list):
         cell_list[i].value = val
     sheet.update_cells(cell_list)
