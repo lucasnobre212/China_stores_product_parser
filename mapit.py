@@ -8,44 +8,23 @@ import re
 import gspread
 import time
 from oauth2client.service_account import ServiceAccountCredentials
+import logging
 
 
-# use creds to create a client to interact with the Google Drive API
-scope = ['https://spreadsheets.google.com/feeds']
-creds = ServiceAccountCredentials.from_json_keyfile_name(
-                                'client_secret.json', scope)
-client = gspread.authorize(creds)
-# Initializing sheet
-sh = client.open("Cópia de LMP")
-sheet = sh.worksheet('DB')
-name_sheet = sh.worksheet('Produtos')
-# Get name column from Produtos worksheet
-name_col_original = name_sheet.col_values(1)
-# Removes blank strings
-name_col = list(set(filter(None, name_col_original)))
-name_col.remove('Nome')
-# Get nem column from DB worksheet
-db_name_col_original = sheet.col_values(1)
-
-# System date
-# dd/mm/yyyy format
-date = (time.strftime("%d/%m/%Y"))
-
-# Creates a list of sites
-site = ['gearbest', 'banggood']
-
-
-def get_col_lenght(col):
-    col_lenght = len(list(filter(None, col)))
-    return col_lenght
+def get_sheet():
+    # use creds to create a client to interact with the Google Drive API
+    scope = ['https://spreadsheets.google.com/feeds']
+    creds = ServiceAccountCredentials.from_json_keyfile_name(
+                                    'client_secret.json', scope)
+    client = gspread.authorize(creds)
+    sh = client.open("Cópia de LMP")
+    return sh
 
 
 # Returns the beautifulsoup object of the product search page
 def get_product_search_page(store, name):
-    print('Running get_product_search_page')
     # Split the string, making it a list of words
     name_split = name.split()
-
     if store == 'gearbest':
         base_url = 'https://www.gearbest.com/'
         # Creates a forLoop to add - the more words we have
@@ -71,8 +50,7 @@ def get_product_search_page(store, name):
     return product_search_page
 
 
-def get_product(store, product_search_page):
-    print("Running get_product")
+def get_product_price(store, product_search_page):
     if store == 'gearbest':
         # Select the rank 1(most relevant) product
         product_tag = product_search_page.select(
@@ -108,23 +86,45 @@ def get_product(store, product_search_page):
 # #     price = price_tag.get('data-orgp')
 # #     return price
 
-def update_cell(name, value, store, date):
-    db_name_col_lenght = get_col_lenght(db_name_col_original)
-    sheet.update_cell(db_name_col_lenght + 1, 1, name)
-    sheet.update_cell(db_name_col_lenght + 1, 2, value)
-    sheet.update_cell(db_name_col_lenght + 1, 9, store)
-    sheet.update_cell(db_name_col_lenght + 1, 10, date)
+def batch_update_cells(sheet, col_lenght, first_col, list, last_col):
+    logging.debug('Updating cell values')
+    cell_list = sheet.range(
+        col_lenght + 1, first_col, col_lenght + len(list), last_col)
+    for i, val in enumerate(list):
+        cell_list[i].value = val
+    sheet.update_cells(cell_list)
 
 
 def main():
-    db_name_col_lenght = get_col_lenght(db_name_col_original)
-    for store in site:
-        print("searching for store:" + store)
-        for name in name_col:
-            price = get_product(store, get_product_search_page(store, name))
-            print("Updating cells")
-            update_cell(name, price, store, date)
-            db_name_col_lenght = db_name_col_lenght + 1
+    get_sheet()
+    logging.basicConfig(level=logging.DEBUG,
+                        format=' %(asctime)s - %(levelname)s - %(message)s')
+    # logging.disable(logging.CRITICAL)
+    logging.debug('Start of program')
+    # Initializing sheet
+    sheet = get_sheet().worksheet('DB')
+    values = sheet.get_all_records()
+    col_len = len(values)
+    name_list = []
+    date = (time.strftime("%d/%m/%Y"))
+    # Creates a list of sites
+    site = ['gearbest', 'banggood']
+    data_list = []
+    # Get products names
+    for i in range(0, col_len):
+        if values[i]['Produtos']:
+            name_list.append(values[i]['Produtos'])
 
+    logging.debug('Values %s' % name_list)
+    # Fills the lists with values
+    for store in site:
+        for name in name_list:
+            logging.debug('Running get_product_search_page')
+            search_page = get_product_search_page(store, name)
+            logging.debug('Running get_product_price')
+            price = get_product_price(store, search_page)
+            data_list.extend([name, price, store, date])
+    batch_update_cells(sheet, col_len, 1, data_list, 4)
+    logging.debug('End of Program')
 if __name__ == "__main__":
     main()
