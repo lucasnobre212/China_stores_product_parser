@@ -1,17 +1,18 @@
-
+#! python3.
 # mapIt.py - Launches a map in the browser using an address from the
 # command line or clipboard.
 
 import requests
 import bs4
-import re
 import gspread
 import time
 from oauth2client.service_account import ServiceAccountCredentials
 import logging
+import queue
+import threading
 
 
-def get_sheet():
+def get_spreadsheet():
     # use creds to create a client to interact with the Google Drive API
     scope = ['https://spreadsheets.google.com/feeds']
     creds = ServiceAccountCredentials.from_json_keyfile_name(
@@ -32,9 +33,7 @@ def get_product_search_page(store, name):
         for i in range(0, len(name_split)):
             search_url = search_url + name_split[i] + '-'
         # Finishes the full url
-        final_search = base_url + search_url + '_gear'
-        # Downloads the search html
-        res = requests.get(final_search)
+        product_search_page = base_url + search_url + '_gear'
     elif store == 'banggood':
         base_url = 'https://www.banggood.com/search/'
         # Creates a forLoop to add - the more words we have
@@ -42,12 +41,16 @@ def get_product_search_page(store, name):
         for i in range(0, len(name_split)):
             search_url = search_url + name_split[i] + '-'
         # Finishes the full url
-        final_search = base_url + search_url + '.html'
-        # Downloads the search html
-        res = requests.get(final_search)
-    # Creates a beautifulsoup object of the page
-    product_search_page = bs4.BeautifulSoup(res.text, "html.parser")
+        product_search_page = base_url + search_url + '.html'
     return product_search_page
+
+
+def download_page(html):
+    # Downloads the search html
+    res = requests.get(html)
+    # Creates a beautifulsoup object of the page
+    product_search_page_object = bs4.BeautifulSoup(res.text, "html.parser")
+    return product_search_page_object
 
 
 def get_product_price(store, product_search_page):
@@ -65,21 +68,21 @@ def get_product_price(store, product_search_page):
     return product_price
 
 
-# # Get the rank 1 product page
-# # def get_product_page(page):
-# #     # Download the html
-# #     res = requests.get(page)
-# #     # Creates a BeautifulSoup class
-# #     site_page = bs4.BeautifulSoup(res.text, "html.parser")
-# #     # Select a html tag and attribute. Using [0] is important
-# #     # for choosing the tag
-# #     try:
-# #         price_tag = site_page.select('b#unit_price')[0]
-# #     except:
-# #         price_tag = site_page.select('span#unit_price')[0]
-# #     # data-orgp is the price value($)
-# #     price = price_tag.get('data-orgp')
-# #     return price
+def get_product_values(site, name_list, date):
+    data_list = []
+    page_list = []
+    for store in site:
+        for name in name_list:
+            logging.debug('Running get_product_search_page')
+            search_page_html = get_product_search_page(store, name)
+            page_list.append(search_page_html)
+            search_page = download_page(search_page_html)
+            logging.debug('Running get_product_price')
+            price = get_product_price(store, search_page)
+            data_list.extend([name, price, store, date])
+    return data_list
+
+
 
 def batch_update_cells(sheet, col_lenght, first_col, list, last_col):
     logging.debug('Updating cell values')
@@ -91,35 +94,24 @@ def batch_update_cells(sheet, col_lenght, first_col, list, last_col):
 
 
 def main():
-    get_sheet()
     logging.basicConfig(level=logging.DEBUG,
-                        format=' %(asctime)s - %(levelname)s - %(message)s')
+         format=' %(asctime)s - %(levelname)s - %(message)s')
     # logging.disable(logging.CRITICAL)
-    logging.debug('Start of program')
-    # Initializing sheet
-    sheet = get_sheet().worksheet('DB')
-    values = sheet.get_all_records()
-    col_len = len(values)
+    # Start important variables
+    site = ['gearbest', 'banggood']
     name_list = []
     date = (time.strftime("%d/%m/%Y"))
-    # Creates a list of sites
-    site = ['gearbest', 'banggood']
-    data_list = []
-    # Get products names
+    # Start reading and manipulating sheet values
+    sheet = get_spreadsheet().worksheet('DB')
+    values = sheet.get_all_records()
+    col_len = len(values)
+    # Get products names list
     for i in range(0, col_len):
         if values[i]['Produtos']:
             name_list.append(values[i]['Produtos'])
 
-    logging.debug('Values %s' % name_list)
     # Fills the lists with values
-    for store in site:
-        for name in name_list:
-            logging.debug('Running get_product_search_page')
-            search_page = get_product_search_page(store, name)
-            logging.debug('Running get_product_price')
-            price = get_product_price(store, search_page)
-            data_list.extend([name, price, store, date])
+    data_list = get_product_values(site, name_list, date)
     batch_update_cells(sheet, col_len, 1, data_list, 4)
-    logging.debug('End of Program')
 if __name__ == "__main__":
     main()
