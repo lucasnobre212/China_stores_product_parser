@@ -9,7 +9,7 @@ import time
 from oauth2client.service_account import ServiceAccountCredentials
 import logging
 import queue
-import threading
+from threading import Thread
 
 
 def get_spreadsheet():
@@ -69,19 +69,19 @@ def get_product_price(store, product_search_page):
 
 
 def get_product_values(site, name_list, date):
-    data_list = []
+    # Set queue to use in thread
+    q = queue.Queue()
     page_list = []
     for store in site:
         for name in name_list:
-            logging.debug('Running get_product_search_page')
             search_page_html = get_product_search_page(store, name)
-            page_list.append(search_page_html)
-            search_page = download_page(search_page_html)
-            logging.debug('Running get_product_price')
-            price = get_product_price(store, search_page)
-            data_list.extend([name, price, store, date])
-    return data_list
-
+            q.put((search_page_html, store, name, date))
+        for i in range(5):
+            t = DownloadWorker(q)
+            t.setDaemon(True)
+            t.start()
+    # Finishes all threads
+    q.join()
 
 
 def batch_update_cells(sheet, col_lenght, first_col, list, last_col):
@@ -93,14 +93,32 @@ def batch_update_cells(sheet, col_lenght, first_col, list, last_col):
     sheet.update_cells(cell_list)
 
 
+class DownloadWorker(Thread):
+
+    def __init__(self, queue):
+        Thread.__init__(self)
+        self.queue = queue
+    def run(self):
+        while True:
+            global data_list
+            link, store, name, date = self.queue.get()
+            search_page = download_page(link)
+            logging.debug(store)
+            price = get_product_price(store, search_page)
+            data_list.extend([name, price, store, date])
+            self.queue.task_done()
+
+
 def main():
+    global data_list
     logging.basicConfig(level=logging.DEBUG,
          format=' %(asctime)s - %(levelname)s - %(message)s')
-    # logging.disable(logging.CRITICAL)
     # Start important variables
     site = ['gearbest', 'banggood']
     name_list = []
+    data_list = []
     date = (time.strftime("%d/%m/%Y"))
+
     # Start reading and manipulating sheet values
     sheet = get_spreadsheet().worksheet('DB')
     values = sheet.get_all_records()
@@ -109,9 +127,10 @@ def main():
     for i in range(0, col_len):
         if values[i]['Produtos']:
             name_list.append(values[i]['Produtos'])
-
-    # Fills the lists with values
-    data_list = get_product_values(site, name_list, date)
+    # Creates threads and populate data_list
+    get_product_values(site, name_list, date)
+    # Update cells
     batch_update_cells(sheet, col_len, 1, data_list, 4)
+
 if __name__ == "__main__":
     main()
